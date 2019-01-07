@@ -1,3 +1,5 @@
+//make-panel.ulp
+
 #usage "<b>Generates a script will create an array of boards based on the board contained within the source file.</b>"
        "<p>Version 5.0"
        "<p><p>"
@@ -17,9 +19,21 @@
        "<author>Edited By: Todd Beyer (USA) tbeyer74@hotmail.com</author>"
        "<p>"
        "<author>Edited By: Thomas M. Sasala (USA) (cyberreefguru)</author>"
+       "<p>"
+       "<author>Edited By: John Plocher (USA) (SPCoast)</author>"
+       "<ul>"
+       "<li>Minor cleanup - removed unused, commented out old code"
+       "<li>Populate array size default with board dimensions"
+       "<li>Made confirmation dialog optional"
+       "<li>Reverted LINE command (new in 9.x) to original WIRE for backward compatibility"
+       "<li>Move DIM layer 20 content to HIDDEN"
+       "<li>Add V-SCORE lines and notation to MILLING layer between boards"
+       "<li>Remove existing empty layers above 100 before (re)creating them to eliminate script errors"
+       "</ul>"
 
 // THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED OR IMPLIED
 
+int NeedConfirmation = 0;  // set to '1' to enable confirmation dialog popup
 
 //int nb_sig_cmn=0;
 int b=0;
@@ -47,6 +61,7 @@ real xdist=0, ydist=0;
 int isize = 0;
 string sSize;
 
+int dimlayer;
 string name;
 string layer_names[];
 int layer_numbers[];
@@ -56,15 +71,6 @@ int defaultBottomLayer = 126;
 int selectedTopLayer=0;
 int selectedBottomLayer=0;
 int index;
-
-/***** edit this values according to your needs *************************************************************************************************/ 
-/*																	       **/
-//int tnames2=125;               /* for panelizing                                                                                               **/
-//int bnames2=126;               /* for panelizing                                                                                               **/
-/************************************************************************************************************************************************/
-
-
-
 
 board(B)
 {
@@ -117,7 +123,10 @@ board(B)
 
         }
     }
-    sprintf(sSize, "Approx Board Size: (%f, %f)", xdist, ydist);
+    sprintf(sSize, "Approx Board Size: (%f, %f) %s", xdist, ydist, sUnits);
+
+    xspacing = xdist;
+    yspacing = ydist;
 
     // Build list of all layers so user can select the top/bottom layers for text
     index = 0;
@@ -197,47 +206,51 @@ if( result == 0)
     exit(0);
 }
 
-do
+deltax=xspacing;
+deltay=yspacing;
+
+if (NeedConfirmation) 
 {
-//    deltax=0;
-//    deltay=125+150;
-//    nx=1;
-//    ny=2;
+    do
+    {
+    //    deltax=0;
+    //    deltay=125+150;
+    //    nx=1;
+    //    ny=2;
 
-    deltax=xspacing;
-    deltay=yspacing;
-//    nx=cols;
-//    ny=rows;
+    //    nx=cols;
+    //    ny=rows;
 
-    //nb_sig_cmn=0;
+	//nb_sig_cmn=0;
 
-    string EntryResults;
-	//string ComSigArr;
+	string EntryResults;
+	    //string ComSigArr;
+	    
+	    //ComSigArr = strjoin(cmn_sig, '\n');
+	    
+	    sprintf(EntryResults,
+	    "Array Size - %d x %d\n\Origin(%f, %f)\nSpacing(%f, %f)\nTop Text Layer - %s (%d)\nBottom Text Layer - %s (%d)\nAdd Values - %d\nFile Location: %s",
+	nx, ny, orgx, orgy, xspacing, yspacing, layer_names[selectedTopLayer], layer_numbers[selectedTopLayer], layer_names[selectedBottomLayer],layer_numbers[selectedBottomLayer],bAddValues, fileLocation);
+	    
+	    accept= dlgDialog("Entry Results")
+	    {
+		    dlgHBoxLayout
+		    {
+			    dlgVBoxLayout
+			    {
+				    dlgTextView("The Values You Entered Are: \n\n" + EntryResults);
+			    }		
+		    }
+		    dlgHBoxLayout
+		    {
+			    dlgPushButton("+OK") dlgAccept();
+			    dlgSpacing(50);
+			    dlgPushButton("-Cancel") dlgReject(4);
+		    }
+	    };
 	
-	//ComSigArr = strjoin(cmn_sig, '\n');
-	
- 	sprintf(EntryResults,
- 	"Array Size - %d x %d\n\Origin(%f, %f)\nSpacing(%f, %f)\nTop Text Layer - %s (%d)\nBottom Text Layer - %s (%d)\nAdd Values - %d\nFile Location: %s",
-    nx, ny, orgx, orgy, xspacing, yspacing, layer_names[selectedTopLayer], layer_numbers[selectedTopLayer], layer_names[selectedBottomLayer],layer_numbers[selectedBottomLayer],bAddValues, fileLocation);
- 	
-	accept= dlgDialog("Entry Results")
-	{
-		dlgHBoxLayout
-		{
-			dlgVBoxLayout
-			{
-				dlgTextView("The Values You Entered Are: \n\n" + EntryResults);
-			}		
-		}
-		dlgHBoxLayout
-		{
-			dlgPushButton("+OK") dlgAccept();
-	 		dlgSpacing(50);
-	 	 	dlgPushButton("-Cancel") dlgReject(4);
-	      	}
-	};
-    
-} while (accept == 0);
+    } while (accept == 0);
+}
 
 if(accept == 4)
 {
@@ -247,6 +260,7 @@ if(accept == 4)
 int i,j,k,cmn,new_layer;
 
 real xx1,yy1,xx2,yy2,xc,yc,xx3,yy3,wid,dia,dril,dx,dy,size,isol;
+real vh, vw;
 
 string font[],mirror[],style[],shap[],spin[],onoff[],pour[];
 
@@ -277,6 +291,7 @@ pour[1]="hatch";
 
 output(fileLocation) 
 {
+    printf("Grid mil;\n");   // Protect against boards with non-mil default grid
     printf("Set wire_bend 2;\n");
     printf("Layer %d '%s';\n",layer_numbers[selectedTopLayer], layer_names[selectedTopLayer]);
     printf("Layer %d '%s';\n",layer_numbers[selectedBottomLayer], layer_names[selectedBottomLayer]);
@@ -288,6 +303,7 @@ output(fileLocation)
         B.layers(E)
         {
             if(E.number<100) continue;
+            printf("layer ?? -%d;\n",E.number);  // if layer exists, the next line's command will fail, so remove it first.
             printf("layer %d '%s';\n",E.number, E.name);
             printf("set color_layer %d %d;\n",E.number, E.color);
 
@@ -296,12 +312,46 @@ output(fileLocation)
     } // end Board
     
     // Copy signals
+
     for(i=1;i<=nx;i++)
     {
+	vw=deltax * nx + 200;  // make V-Score milling lines extend beyond the array top/bottom/sides...
+	vh=deltay * ny + 200;
+
         for(j=1;j<=ny;j++) 
         {
             dx=orgx + (i-1)*deltax;
             dy=orgy + (j-1)*deltay;
+
+	    // V-Score vertical - only between board instances
+		if (j == 1 && i > 1 && nx > 1)
+	    {
+		printf("change layer %d;\n",46); // Milling
+		printf("change style %s;\n","CONTINUOUS");
+		printf("wire '%s%s%d%d' %f (%f %f) (%f %f);\n","Vscore","auto",i,j, 0.0, orgx + (i-1)*deltax,  orgy - 100, orgx + (i-1)*deltax, orgy + vh); // V-SCORE
+		printf("change size 40;\n");
+		printf("text 'V-Score' R%f (%f %f);\n", 180.0, orgx + (i-1)*deltax,  orgy - 100);
+	    }
+
+	    // V-Score Horizontal
+	    //if (i == 1 && j > 1 && ny > 1) //  - only between board instances
+	    if (i == 1)                      //  - bottom as well as between board instances
+	    {
+		printf("change layer %d;\n",46); // Milling
+		printf("change style %s;\n","CONTINUOUS");
+		printf("wire '%s%s%d%d' %f (%f %f) (%f %f);\n","Vscore","auto",i,j, 0.0, orgx - 100, orgy + (j-1)*deltay, orgx + vw, orgy + (j-1)*deltay); // V-SCORE
+		printf("change size 40;\n");
+		printf("text 'V-Score' R%f (%f %f);\n", 90.0, orgx - 100, orgy + (j-1)*deltay);
+	    }
+	    if (i == nx) // add a final one at the top of the array - not everyone will want this...
+	    {
+		printf("change layer %d;\n",46); // Milling
+		printf("change style %s;\n","CONTINUOUS");
+		printf("wire '%s%s%d%d' %f (%f %f) (%f %f);\n","Vscore","auto",i,j, 0.0, orgx - 100, orgy + (j)*deltay, orgx + vw, orgy + (j)*deltay); // V-SCORE
+		printf("change size 40;\n");
+		printf("text 'V-Score' R%f (%f %f);\n", 90.0, orgx - 100, orgy + (j)*deltay);
+	    }
+
 
             //printf("// loop(%d, %d), org(%f, %f), delta(%f, %f), d(%f,%f)\n", i, j, orgx, orgy, deltax, deltay, dx, dy );
 
@@ -378,9 +428,9 @@ output(fileLocation)
                             printf("change layer %d;\n",w.layer);
                             printf("change style %s;\n",style[w.style]);
                             //if(cmn==0)
-                                printf("line '%s%s%d%d' %f (%f %f) (%f %f);\n",s.name,suffix,i,j,wid,xx1,yy1,xx2,yy2); // create new
+                                printf("wire '%s%s%d%d' %f (%f %f) (%f %f);\n",s.name,suffix,i,j,wid,xx1,yy1,xx2,yy2); // create new
                             //else
-                            //    printf("line '%s' %f (%f %f) (%f %f)\n",s.name,wid,xx1,yy1,xx2,yy2);  // keep old
+                            //    printf("wire '%s' %f (%f %f) (%f %f)\n",s.name,wid,xx1,yy1,xx2,yy2);  // keep old
                                 
                         } // end !w.arc
                         
@@ -459,20 +509,31 @@ output(fileLocation)
                 {
                     if(!w.arc)
                     {
+			dimlayer = w.layer;  
+			if (dimlayer == 20)  // force all DIMENSION layer lines to be on the HIDDEN layer
+			{
+			    dimlayer = 101;  // change to "20" if you don't want this behavior
+			}
+
                         wid= u2mil(w.width);
                         xx1= u2mil(w.x1)+dx;
                         yy1= u2mil(w.y1)+dy;
                         xx2= u2mil(w.x2)+dx;
                         yy2= u2mil(w.y2)+dy;
 
-                        printf("change layer %d;\n",w.layer);
+                        printf("change layer %d;\n",dimlayer);
                         printf("change style %s;\n",style[w.style]);
-                        printf("line %f (%f %f) (%f %f);\n",wid,xx1,yy1,xx2,yy2);
+                        printf("wire %f (%f %f) (%f %f);\n",wid,xx1,yy1,xx2,yy2);
                         
                     } // end if !w.arc
                     
                     if(w.arc)
                     {
+			dimlayer = w.arc.layer;
+			if (dimlayer == 20)  // force all DIMENSION layer lines to be on the HIDDEN layer
+			{
+			    dimlayer = 101;  // change to "20" if you don't want this behavior
+			}
 
                         wid= u2mil(w.arc.width);
                         xx1= u2mil(w.arc.x1)+dx;
@@ -485,7 +546,7 @@ output(fileLocation)
                         yy3= u2mil(w.arc.y2)+dy;
 
 
-                        printf("change layer %d;\n",w.arc.layer);
+                        printf("change layer %d;\n",dimlayer);
                         printf("change style %s;\n",style[w.style]);
                         printf("change width %f\n",wid);
                         printf("arc CCW (%f %f) (%f %f) (%f %f);\n",xx1,yy1,xx2,yy2,xx3,yy3);
@@ -599,7 +660,5 @@ output(fileLocation)
     printf("display -28;\n");
     printf("display -37;\n");
     printf("display -38;\n");
-    
-
-
+  
 }
